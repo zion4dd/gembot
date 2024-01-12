@@ -7,6 +7,7 @@ import google.generativeai as genai
 
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from bs4 import BeautifulSoup
 
 from zenrows import ZenRowsClient
 import json
@@ -14,6 +15,14 @@ import json
 
 # function to use
 MODE = 'proxy'  # gemini | proxy | zenrows
+HTTPS_FILENAME = 'https.txt'
+
+# .env
+load_dotenv()
+TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
+API_KEY = os.getenv("GOOGLE_API_KEY")
+MAX = int(os.getenv("MAX", 20))
+TIMEOUT = int(os.getenv("TIMEOUT", 20))
 
 # logger
 logger = logging.getLogger()
@@ -24,31 +33,44 @@ f_handler = logging.FileHandler(f"logfile.log")
 f_handler.setFormatter(formatter)
 logger.addHandler(f_handler)
 
-# .env
-load_dotenv()
-TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
-API_KEY = os.getenv("GOOGLE_API_KEY")
-MAX = int(os.getenv("MAX", 20))
-TIMEOUT = int(os.getenv("TIMEOUT", 20))
 
-# ask_gem()
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-pro')
-
-# ask_gem_proxy() ask_gem_zen()
-url = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
+url_https = 'https://www.sslproxies.org/'
+url_gemini = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
 headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": API_KEY,
             }
 
+# ask_gem()
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel('gemini-pro')
+
 # ask_gem_zen()
 zenclient = ZenRowsClient('6b88609186d21ab8d8a723f7daec145606c80771')
 
 
+def get_https_file():
+    try:
+        src = requests.get(url_https)
+        soup = BeautifulSoup(src.text, 'html.parser')
+        https_str: str = soup.find(attrs={'class':'modal-body'}).find(attrs={'class':'form-control'}).text
+
+        separator = ('\n\n')
+        index: int = https_str.find(separator) + len(separator)
+        https_str: str = https_str[index:]
+
+        with open(HTTPS_FILENAME, 'w') as f:
+            f.write(https_str)
+        # os.chmod(HTTPS_FILENAME, mode=0o777)
+        return https_str[:50]
+    
+    except Exception as e:
+        return str(e)
+
+
 def get_https_list():
     try:
-        with open('https.txt', 'r') as f:
+        with open(HTTPS_FILENAME, 'r') as f:
             https_list = f.readlines()[:MAX]
         return https_list
     
@@ -58,7 +80,7 @@ def get_https_list():
 
 def write_https_list(https_list):
     try:
-        with open('https.txt', 'w') as f:
+        with open(HTTPS_FILENAME, 'w') as f:
             f.writelines(https_list)
 
     except IOError as e:
@@ -87,7 +109,7 @@ def ask_gem_proxy(ask):
         https = https_list[0]
         proxies = {'https': https.strip()}
         try:
-            response = requests.post(url, headers=headers, json=data, proxies=proxies, timeout=TIMEOUT)
+            response = requests.post(url_gemini, headers=headers, json=data, proxies=proxies, timeout=TIMEOUT)
             if response.status_code == 400:
                 raise Exception('Exception: 400 User location is not supported for the API use.')
             
@@ -113,7 +135,7 @@ def ask_gem_zen(ask):
     "premium_proxy": "true",
     }
     j = json.dumps(data)
-    response = zenclient.post(url, headers=headers, data=j, params=params)
+    response = zenclient.post(url_gemini, headers=headers, data=j, params=params)
     content_text = json.loads(response.text)
     content_text = content_text.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
     return content_text
@@ -130,6 +152,12 @@ async def start(update, context):
                                     text=msg)
 
 
+async def get_https(update, context):
+    res = get_https_file()
+    await context.bot.send_message(chat_id=update.effective_chat.id, 
+                                    text=res)
+
+
 async def echo(update, context):
     res = 'MODE is None'
     if MODE == 'gemini':
@@ -144,8 +172,10 @@ async def echo(update, context):
     
 
 if __name__ == "__main__":
+    get_https_file(HTTPS_FILENAME)
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('get', get_https))
     app.add_handler(MessageHandler(filters.TEXT, echo))
     app.run_polling()
 
