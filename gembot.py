@@ -4,14 +4,10 @@ import os
 import logging
 import requests
 import time
-import google.generativeai as genai
 
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from bs4 import BeautifulSoup
-
-from zenrows import ZenRowsClient
-import json
 
 
 # function to use
@@ -22,7 +18,7 @@ HTTPS_FILENAME = 'https.txt'
 load_dotenv()
 TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
 API_KEY = os.getenv("GOOGLE_API_KEY")
-MAX = int(os.getenv("MAX", 20))
+MAX = int(os.getenv("MAX", 20))  # max proxies from list
 TIMEOUT = int(os.getenv("TIMEOUT", 20))  # seconds
 LIFETIME = int(os.getenv("LIFETIME", 600))  # seconds
 
@@ -35,21 +31,54 @@ f_handler = logging.FileHandler(f"logfile.log")
 f_handler.setFormatter(formatter)
 logger.addHandler(f_handler)
 
-
-url_https = 'https://www.sslproxies.org/'
-url_gemini = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
-headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": API_KEY,
-            }
+if MODE in ('proxy', 'zenrows'):
+    url_https = 'https://www.sslproxies.org/'
+    url_gemini = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
+    headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": API_KEY,
+                }
 
 # ask_gem()
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+if MODE == 'gemini':
+    import google.generativeai as genai
+    
+    genai.configure(api_key=API_KEY)
+    model = genai.GenerativeModel('gemini-pro')
 
 # ask_gem_zen()
-zenclient = ZenRowsClient('6b88609186d21ab8d8a723f7daec145606c80771')
+if MODE == 'zenrows':
+    import json
+    from zenrows import ZenRowsClient
+    
+    zenclient = ZenRowsClient('6b88609186d21ab8d8a723f7daec145606c80771')
 
+
+def ask_gem(ask):
+    try:
+        response = model.generate_content(ask)
+        logger.warning('ASK: %s' % ask)
+        logger.warning('RESP: %s' % response.text)
+        return response.text
+    
+    except Exception as e:
+        logger.error(str(e))
+        return f"Exception: {e}"
+    
+
+def ask_gem_zen(ask):
+    data = {"contents":[{"parts":[{"text": ask}]}]}
+    params = {
+    "js_render": "true",
+    "json_response": "true",
+    "premium_proxy": "true",
+    }
+    j = json.dumps(data)
+    response = zenclient.post(url_gemini, headers=headers, data=j, params=params)
+    content_text = json.loads(response.text)
+    content_text = content_text.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
+    return content_text
+    
 
 def get_https_file():
     try:
@@ -98,18 +127,6 @@ def write_https_list(https_list):
         logger.error(str(e))
 
 
-def ask_gem(ask):
-    try:
-        response = model.generate_content(ask)
-        logger.warning('ASK: %s' % ask)
-        logger.warning('RESP: %s' % response.text)
-        return response.text
-    
-    except Exception as e:
-        logger.error(str(e))
-        return f"Exception: {e}"
-    
-
 def ask_gem_proxy(ask):
     # https_list = open("https.txt", "r").read().strip().split("\n")[:20]
     data = {"contents":[{"parts":[{"text": ask}]}]}
@@ -139,28 +156,8 @@ def ask_gem_proxy(ask):
     return 'Халявные прокси не отвечают.\nПерегрузил список.\nПопробуй еще раз.'
 
 
-def ask_gem_zen(ask):
-    data = {"contents":[{"parts":[{"text": ask}]}]}
-    params = {
-    "js_render": "true",
-    "json_response": "true",
-    "premium_proxy": "true",
-    }
-    j = json.dumps(data)
-    response = zenclient.post(url_gemini, headers=headers, data=j, params=params)
-    content_text = json.loads(response.text)
-    content_text = content_text.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
-    return content_text
-
-
 async def start(update, context):
-    msg = '''здарова. это гугл чат бот. самый настоящий. только с амнезией.
-я умею давать ответ только на один запрос. предыдущий диалог не запоминаю.
-поэтому тщательно формулируй запрос.
-может быть в будущем я смогу вести диалог, но пока мне лень.
-еще я испльзую халявные прокси, потому что гугл нас забанил. поэтому туплю.
-чего изволите?'''
-    # msg = 'start ok'
+    msg = 'start ok'
     await context.bot.send_message(chat_id=update.effective_chat.id, 
                                     text=msg)
 
@@ -181,10 +178,10 @@ async def echo(update, context):
     res = 'MODE is None'
     if MODE == 'gemini':
         res = ask_gem(update.message.text)
-    if MODE == 'proxy':
-        res = ask_gem_proxy(update.message.text)
     if MODE == 'zenrows':
         res = ask_gem_zen(update.message.text)
+    if MODE == 'proxy':
+        res = ask_gem_proxy(update.message.text)
 
     await context.bot.send_message(chat_id=update.effective_chat.id, 
                                     text=res)
@@ -194,8 +191,16 @@ if __name__ == "__main__":
     get_https_file()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler('start', start))
-    app.add_handler(CommandHandler('get', get_https))
+    app.add_handler(CommandHandler('getproxy', get_https))
     app.add_handler(CommandHandler('ctime', get_lifetime))
     app.add_handler(MessageHandler(filters.TEXT, echo))
     app.run_polling()
 
+
+
+#     msg = '''здарова. это гугл чат бот. самый настоящий. только с амнезией.
+# я умею давать ответ только на один запрос. предыдущий диалог не запоминаю.
+# поэтому тщательно формулируй запрос.
+# может быть в будущем я смогу вести диалог, но пока мне лень.
+# еще я испльзую халявные прокси, потому что гугл нас забанил. поэтому туплю.
+# '''
