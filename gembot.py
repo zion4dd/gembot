@@ -75,6 +75,7 @@ def check_https_file_ctime():
     lifetime = time.time() - ctime
     if lifetime > LIFETIME:
         get_https_file()
+    return 'lifetime: ' + str(lifetime)
 
 
 def get_https_list():
@@ -166,6 +167,12 @@ async def get_https(update, context):
     res = get_https_file()
     await context.bot.send_message(chat_id=update.effective_chat.id, 
                                     text=res)
+    
+
+async def get_lifetime(update, context):
+    res = check_https_file_ctime()
+    await context.bot.send_message(chat_id=update.effective_chat.id, 
+                                    text=res)
 
 
 async def echo(update, context):
@@ -186,6 +193,7 @@ if __name__ == "__main__":
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('get', get_https))
+    app.add_handler(CommandHandler('ctime', get_lifetime))
     app.add_handler(MessageHandler(filters.TEXT, echo))
     app.run_polling()
 
