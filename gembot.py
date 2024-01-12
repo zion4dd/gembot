@@ -11,6 +11,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from zenrows import ZenRowsClient
 import json
 
+
+# logger
 logger = logging.getLogger()
 logger.setLevel(30)
 formatter = logging.Formatter(f"[%(asctime)s] func: %(funcName)s()\n%(message)s", 
@@ -19,20 +21,25 @@ f_handler = logging.FileHandler(f"logfile.log")
 f_handler.setFormatter(formatter)
 logger.addHandler(f_handler)
 
+# .env
 load_dotenv()
 TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
 API_KEY = os.getenv("GOOGLE_API_KEY")
 MAX = int(os.getenv("MAX", 20))
+TIMEOUT = int(os.getenv("TIMEOUT", 20))
 
+# ask_gem()
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
+# ask_gem_proxy() ask_gem_zen()
 url = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
 headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": API_KEY,
             }
 
+# ask_gem_zen()
 zenclient = ZenRowsClient('6b88609186d21ab8d8a723f7daec145606c80771')
 
 
@@ -77,18 +84,18 @@ def ask_gem_proxy(ask):
         https = https_list[0]
         proxies = {'https': https.strip()}
         try:
-            response = requests.post(url, headers=headers, json=data, proxies=proxies).json()
-            
+            response = requests.post(url, headers=headers, json=data, proxies=proxies, timeout=TIMEOUT)
             if response.status_code not in [200, 301, 302, 307]:
                 raise Exception('BAD response status_code %s' % response.status_code)
             
             if https_list != original:
                 write_https_list(https_list)
 
+            response = response.json()
             return response.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
         
         except Exception as e:
-            # logger.warning(str(e))
+            logger.warning(str(e))
             https_list.pop(0)
             continue
 
