@@ -3,6 +3,7 @@
 import os
 import logging
 import requests
+import time
 import google.generativeai as genai
 
 from dotenv import load_dotenv
@@ -22,7 +23,8 @@ load_dotenv()
 TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
 API_KEY = os.getenv("GOOGLE_API_KEY")
 MAX = int(os.getenv("MAX", 20))
-TIMEOUT = int(os.getenv("TIMEOUT", 20))
+TIMEOUT = int(os.getenv("TIMEOUT", 20))  # seconds
+LIFETIME = int(os.getenv("LIFETIME", 600))  # seconds
 
 # logger
 logger = logging.getLogger()
@@ -66,9 +68,17 @@ def get_https_file():
     
     except Exception as e:
         return str(e)
+    
+
+def check_https_file_ctime():
+    ctime = os.path.getctime(HTTPS_FILENAME)
+    lifetime = time.time() - ctime
+    if lifetime > LIFETIME:
+        get_https_file()
 
 
 def get_https_list():
+    check_https_file_ctime()
     try:
         with open(HTTPS_FILENAME, 'r') as f:
             https_list = f.readlines()[:MAX]
@@ -172,7 +182,7 @@ async def echo(update, context):
     
 
 if __name__ == "__main__":
-    get_https_file(HTTPS_FILENAME)
+    get_https_file()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('get', get_https))
