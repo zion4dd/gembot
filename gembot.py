@@ -12,6 +12,9 @@ from zenrows import ZenRowsClient
 import json
 
 
+# function to use
+MODE = 'proxy'  # gemini | proxy | zenrows
+
 # logger
 logger = logging.getLogger()
 logger.setLevel(30)
@@ -85,8 +88,8 @@ def ask_gem_proxy(ask):
         proxies = {'https': https.strip()}
         try:
             response = requests.post(url, headers=headers, json=data, proxies=proxies, timeout=TIMEOUT)
-            if response.status_code not in [200, 301, 302, 307]:
-                raise Exception('BAD response status_code %s' % response.status_code)
+            if response.status_code == 400:
+                raise Exception('Exception: 400 User location is not supported for the API use.')
             
             if https_list != original:
                 write_https_list(https_list)
@@ -128,7 +131,14 @@ async def start(update, context):
 
 
 async def echo(update, context):
-    res = ask_gem_proxy(update.message.text)
+    res = 'MODE is None'
+    if MODE == 'gemini':
+        res = ask_gem(update.message.text)
+    if MODE == 'proxy':
+        res = ask_gem_proxy(update.message.text)
+    if MODE == 'zenrows':
+        res = ask_gem_zen(update.message.text)
+
     await context.bot.send_message(chat_id=update.effective_chat.id, 
                                     text=res)
     
