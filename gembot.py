@@ -22,7 +22,7 @@ logger.addHandler(f_handler)
 load_dotenv()
 TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
 API_KEY = os.getenv("GOOGLE_API_KEY")
-MAX = os.getenv("MAX")
+MAX = int(os.getenv("MAX", 20))
 
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-pro')
