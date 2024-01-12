@@ -7,7 +7,6 @@ import google.generativeai as genai
 
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-# from proxies import proxies
 
 from zenrows import ZenRowsClient
 import json
@@ -20,10 +19,10 @@ f_handler = logging.FileHandler(f"logfile.log")
 f_handler.setFormatter(formatter)
 logger.addHandler(f_handler)
 
-
 load_dotenv()
 TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
 API_KEY = os.getenv("GOOGLE_API_KEY")
+MAX = os.getenv("MAX")
 
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-pro')
@@ -37,7 +36,26 @@ headers = {
 zenclient = ZenRowsClient('6b88609186d21ab8d8a723f7daec145606c80771')
 
 
-def ask_gemini(ask):
+def get_https_list():
+    try:
+        with open('https.txt', 'r') as f:
+            https_list = f.readlines()[:MAX]
+        return https_list
+    
+    except FileNotFoundError as e:
+        logger.error(str(e))
+
+
+def write_https_list(https_list):
+    try:
+        with open('https.txt', 'w') as f:
+            f.writelines(https_list)
+
+    except IOError as e:
+        logger.error(str(e))
+
+
+def ask_gem(ask):
     try:
         response = model.generate_content(ask)
         logger.warning('ASK: %s' % ask)
@@ -49,24 +67,35 @@ def ask_gemini(ask):
         return f"Exception: {e}"
     
 
-def ask_gemini_2(ask):
+def ask_gem_proxy(ask):
+    # https_list = open("https.txt", "r").read().strip().split("\n")[:20]
     data = {"contents":[{"parts":[{"text": ask}]}]}
-    https_list = open("https.txt", "r").read().strip().split("\n")[:20]
+    https_list = get_https_list()
+    original = https_list.copy()
+
     while https_list:
-        proxies = {
-                'https': https_list.pop(0)
-            }
+        https = https_list[0]
+        proxies = {'https': https.strip()}
         try:
             response = requests.post(url, headers=headers, json=data, proxies=proxies).json()
-            logger.warning(">>> GOOD: %s" % proxies['https'])
+            
+            if response.status_code not in [200, 301, 302, 307]:
+                raise Exception('BAD response status_code %s' % response.status_code)
+            
+            if https_list != original:
+                write_https_list(https_list)
+
             return response.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
+        
         except Exception as e:
-            logger.warning(str(e))
+            # logger.warning(str(e))
+            https_list.pop(0)
             continue
-    return 'list empty'
+
+    return 'proxy list empty'
 
 
-def ask_gemini_zen(ask):
+def ask_gem_zen(ask):
     data = {"contents":[{"parts":[{"text": ask}]}]}
     params = {
     "js_render": "true",
@@ -88,13 +117,13 @@ async def start(update, context):
 # чего изволите?'''
     msg = 'start ok'
     await context.bot.send_message(chat_id=update.effective_chat.id, 
-                             text=msg)
+                                    text=msg)
 
 
 async def echo(update, context):
-    res = ask_gemini_2(update.message.text)
+    res = ask_gem_proxy(update.message.text)
     await context.bot.send_message(chat_id=update.effective_chat.id, 
-                             text=res)
+                                    text=res)
     
 
 if __name__ == "__main__":
