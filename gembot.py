@@ -148,7 +148,7 @@ def ask_gem_proxy(ask):
             return response.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
         
         except Exception as e:
-            logger.warning(str(e))
+            # logger.warning(str(e))
             https_list.pop(0)
             continue
     
@@ -172,6 +172,21 @@ async def get_lifetime(update, context):
     res = check_https_file_ctime()
     await context.bot.send_message(chat_id=update.effective_chat.id, 
                                     text=res)
+    
+
+async def get_country(update, context):
+    url = 'https://2ip.ru'
+    https = get_https_list()[0]
+    proxies = {'https': https.strip()}
+    response = requests.get(url, proxies=proxies)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    ip = soup.find('div', class_='ip').text.strip()
+    country = soup.find('div', class_='value-country').text.strip().split('\n')[0]
+    
+    res = f"{ip} - {country}"
+    await context.bot.send_message(chat_id=update.effective_chat.id, 
+                                    text=res)
 
 
 async def echo(update, context):
@@ -193,6 +208,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('getproxy', get_https))
     app.add_handler(CommandHandler('ctime', get_lifetime))
+    app.add_handler(CommandHandler('country', get_country))
     app.add_handler(MessageHandler(filters.TEXT, echo))
     app.run_polling()
 
