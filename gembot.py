@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 
 
 # function to use
-MODE = 'proxy'  # gemini | proxy | zenrows
+MODE = 'proxy'  # gemini | proxy
 HTTPS_FILENAME = 'https.txt'
 
 # .env
@@ -22,16 +22,17 @@ MAX = int(os.getenv("MAX", 20))  # max proxies from list
 TIMEOUT = int(os.getenv("TIMEOUT", 20))  # seconds
 LIFETIME = int(os.getenv("LIFETIME", 600))  # seconds
 
-# logger
-logger = logging.getLogger()
-logger.setLevel(30)
-formatter = logging.Formatter(f"[%(asctime)s] func: %(funcName)s()\n%(message)s", 
-                                datefmt="%Y-%m-%d %H:%M")
-f_handler = logging.FileHandler(f"logfile.log")
-f_handler.setFormatter(formatter)
-logger.addHandler(f_handler)
+# logging
+logging.basicConfig(
+    filename="logfile",
+    format="[%(asctime)s] func: %(funcName)s()\n%(message)s",
+    datefmt="%Y-%m-%d %H:%M",
+    level=logging.WARNING,
+    encoding="UTF-8",
+)
 
-if MODE in ('proxy', 'zenrows'):
+# ask_gem_proxy()
+if MODE == 'proxy':
     url_https = 'https://www.sslproxies.org/'
     url_gemini = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
     headers = {
@@ -46,38 +47,17 @@ if MODE == 'gemini':
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-pro')
 
-# ask_gem_zen()
-if MODE == 'zenrows':
-    import json
-    from zenrows import ZenRowsClient
-    
-    zenclient = ZenRowsClient('6b88609186d21ab8d8a723f7daec145606c80771')
-
 
 def ask_gem(ask):
     try:
         response = model.generate_content(ask)
-        logger.warning('ASK: %s' % ask)
-        logger.warning('RESP: %s' % response.text)
+        logging.warning('ASK: %s' % ask)
+        logging.warning('RESP: %s' % response.text)
         return response.text
     
     except Exception as e:
-        logger.error(str(e))
+        logging.error(str(e))
         return f"Exception: {e}"
-    
-
-def ask_gem_zen(ask):
-    data = {"contents":[{"parts":[{"text": ask}]}]}
-    params = {
-    "js_render": "true",
-    "json_response": "true",
-    "premium_proxy": "true",
-    }
-    j = json.dumps(data)
-    response = zenclient.post(url_gemini, headers=headers, data=j, params=params)
-    content_text = json.loads(response.text)
-    content_text = content_text.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
-    return content_text
     
 
 def get_https_file():
@@ -102,29 +82,29 @@ def get_https_file():
 def check_https_file_ctime():
     ctime = os.path.getctime(HTTPS_FILENAME)
     lifetime = time.time() - ctime
-    if lifetime > LIFETIME:
-        get_https_file()
-    return 'lifetime: ' + str(lifetime)
+    return lifetime
 
 
 def get_https_list():
-    check_https_file_ctime()
+    lifetime = check_https_file_ctime()
+    if lifetime > LIFETIME:
+        get_https_file()
     try:
         with open(HTTPS_FILENAME, 'r') as f:
             https_list = f.readlines()[:MAX]
         return https_list
     
     except FileNotFoundError as e:
-        logger.error(str(e))
+        logging.error(str(e))
 
 
-def write_https_list(https_list):
+def write_https_list(https_list: list):
     try:
         with open(HTTPS_FILENAME, 'w') as f:
             f.writelines(https_list)
 
     except IOError as e:
-        logger.error(str(e))
+        logging.error(str(e))
 
 
 def ask_gem_proxy(ask):
@@ -169,7 +149,8 @@ async def get_https(update, context):
     
 
 async def get_lifetime(update, context):
-    res = check_https_file_ctime()
+    lifetime = check_https_file_ctime()
+    res = 'lifetime: %s' % lifetime
     await context.bot.send_message(chat_id=update.effective_chat.id, 
                                     text=res)
     
@@ -193,8 +174,6 @@ async def echo(update, context):
     res = 'MODE is None'
     if MODE == 'gemini':
         res = ask_gem(update.message.text)
-    if MODE == 'zenrows':
-        res = ask_gem_zen(update.message.text)
     if MODE == 'proxy':
         res = ask_gem_proxy(update.message.text)
 
@@ -220,3 +199,17 @@ if __name__ == "__main__":
 # может быть в будущем я смогу вести диалог, но пока мне лень.
 # еще я испльзую халявные прокси, потому что гугл нас забанил. поэтому туплю.
 # '''
+    
+
+# from logging import handlers
+# logger = logging.getLogger()
+# logger.setLevel(logging.WARNING)
+# formatter = logging.Formatter(f"[%(asctime)s] func: %(funcName)s()\n%(message)s", 
+#                                 datefmt="%Y-%m-%d %H:%M")
+# f_handler = handlers.RotatingFileHandler(filename='logfile', 
+                                        #  maxBytes=1000, 
+                                        #  backupCount=1, 
+                                        #  encoding="UTF-8", 
+                                        #  )
+# f_handler.setFormatter(formatter)
+# logger.addHandler(f_handler)
