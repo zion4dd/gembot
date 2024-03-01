@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 
 # .env
 load_dotenv()
-PROXY = bool(os.getenv('PROXY'))
+PROXY = os.getenv('PROXY') == 'true'
 TOKEN = os.getenv('GEMINI_CHAT_TOKEN')
 API_KEY = os.getenv("GOOGLE_API_KEY")
 MAX = int(os.getenv("MAX", 20))  # max proxies from list
@@ -120,7 +120,7 @@ def ask_gem_proxy(ask):
             response = response.json()
             return response.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text")
         
-        except Exception as e:
+        except Exception:
             # logger.warning(str(e))
             https_list.pop(0)
             continue
