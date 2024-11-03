@@ -1,0 +1,18 @@
+# ln -s /var/www/gembot/gembot.service /etc/systemd/system/gembot.service
+# systemctl daemon-reload
+
+[Unit]
+Description=Bot instance for GeminiBot (zi)
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gembot
+ExecStart=/var/www/gembot/venv/bin/python3 /var/www/gembot/gembot.py
+EnvironmentFile=/var/www/gembot/.env
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
